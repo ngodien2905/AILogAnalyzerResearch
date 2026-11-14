@@ -1,0 +1,11 @@
+.vs/
+.dotnet_cli/
+.tmp_doc_review/
+**/bin/
+**/obj/
+**/*.user
+AILogAnalyzerResearch/App_Data/
+
+# Local secrets and environment overrides
+.env
+appsettings.Local.json
