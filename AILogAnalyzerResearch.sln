@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.37827.9 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AILogAnalyzerResearch", "AILogAnalyzerResearch\AILogAnalyzerResearch.csproj", "{80D892AF-C60D-4668-9E35-5AB2EC978E83}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AILogAnalyzerResearch.Tests", "AILogAnalyzerResearch.Tests\AILogAnalyzerResearch.Tests.csproj", "{698F3B33-854B-4565-9205-7D15C8421D35}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{80D892AF-C60D-4668-9E35-5AB2EC978E83}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{80D892AF-C60D-4668-9E35-5AB2EC978E83}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{80D892AF-C60D-4668-9E35-5AB2EC978E83}.Release|Any CPU.Build.0 = Release|Any CPU
+		{698F3B33-854B-4565-9205-7D15C8421D35}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{698F3B33-854B-4565-9205-7D15C8421D35}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{698F3B33-854B-4565-9205-7D15C8421D35}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{698F3B33-854B-4565-9205-7D15C8421D35}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

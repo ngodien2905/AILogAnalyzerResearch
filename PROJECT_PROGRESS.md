@@ -14,18 +14,19 @@
 
 ## Milestone 2 Application Services
 
-- [ ] Participant task and assignment services
-- [ ] AI log JSON and CSV import validation
-- [ ] Source file storage abstraction
-- [ ] Research metrics queries
-- [ ] Seed data for local demonstration
+- [x] Participant task and assignment services
+- [x] AI log JSON CSV and TXT import validation
+- [x] Source file storage abstraction
+- [x] Research metrics queries
+- [x] Seed data for local demonstration
+- [x] Automated service tests
 
 ## Milestone 3 Researcher Interface
 
-- [ ] Research dashboard
-- [ ] Participant and coding task management
-- [ ] AI log review and manual classification
-- [ ] Source submission review and rubric assessment
+- [x] Research dashboard
+- [x] Participant and coding task management
+- [x] AI log review and manual classification
+- [x] Source submission review and rubric assessment
 
 ## Milestone 4 Student Interface
 

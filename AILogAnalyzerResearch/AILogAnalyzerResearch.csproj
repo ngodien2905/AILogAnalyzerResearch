@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>AILogAnalyzerResearch-8b387856-12e5-4c7e-ae76-c17065ac8472</UserSecretsId>
+    <DefaultItemExcludes>$(DefaultItemExcludes);App_Data\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

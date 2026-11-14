@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 
 namespace AILogAnalyzerResearch.Services;
 
@@ -8,12 +9,14 @@ public interface IFileStorageService
 {
     Task<StoredFile> SaveAsync(Stream content, string fileName, string contentType, CancellationToken cancellationToken = default);
     Task<Stream?> OpenReadAsync(string reference, CancellationToken cancellationToken = default);
+    Task DeleteAsync(string reference, CancellationToken cancellationToken = default);
 }
 
 public sealed class LocalFileStorageService(IWebHostEnvironment environment, IConfiguration configuration) : IFileStorageService
 {
-    private readonly string _root = Path.GetFullPath(configuration["Storage:LocalPath"]
-        ?? Path.Combine(environment.ContentRootPath, "App_Data", "uploads"));
+    private readonly string _root = Path.GetFullPath(string.IsNullOrWhiteSpace(configuration["Storage:LocalPath"])
+        ? Path.Combine(environment.ContentRootPath, "App_Data", "uploads")
+        : configuration["Storage:LocalPath"]!);
 
     public async Task<StoredFile> SaveAsync(Stream content, string fileName, string contentType, CancellationToken cancellationToken = default)
     {
@@ -30,13 +33,28 @@ public sealed class LocalFileStorageService(IWebHostEnvironment environment, ICo
 
     public Task<Stream?> OpenReadAsync(string reference, CancellationToken cancellationToken = default)
     {
-        var path = Path.GetFullPath(Path.Combine(_root, reference.Replace('/', Path.DirectorySeparatorChar)));
-        if (!path.StartsWith(_root, StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+        var path = ResolveReference(reference);
+        if (path is null || !File.Exists(path))
         {
             return Task.FromResult<Stream?>(null);
         }
 
         return Task.FromResult<Stream?>(File.OpenRead(path));
+    }
+
+    public Task DeleteAsync(string reference, CancellationToken cancellationToken = default)
+    {
+        var path = ResolveReference(reference);
+        if (path is not null && File.Exists(path)) File.Delete(path);
+        return Task.CompletedTask;
+    }
+
+    private string? ResolveReference(string reference)
+    {
+        var rootWithSeparator = _root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var path = Path.GetFullPath(Path.Combine(_root, reference.Replace('/', Path.DirectorySeparatorChar)));
+        return path.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase) ? path : null;
     }
 }
 
@@ -50,7 +68,7 @@ public sealed class SupabaseFileStorageService(IHttpClientFactory httpClientFact
     {
         var extension = Path.GetExtension(Path.GetFileName(fileName));
         var reference = $"{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid():N}{extension}";
-        using var request = CreateRequest(HttpMethod.Post, $"/storage/v1/object/{Uri.EscapeDataString(_bucket)}/{reference}");
+        using var request = CreateRequest(HttpMethod.Post, ObjectPath(reference));
         request.Headers.TryAddWithoutValidation("x-upsert", "false");
         request.Content = new StreamContent(content);
         request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
@@ -62,7 +80,7 @@ public sealed class SupabaseFileStorageService(IHttpClientFactory httpClientFact
 
     public async Task<Stream?> OpenReadAsync(string reference, CancellationToken cancellationToken = default)
     {
-        using var request = CreateRequest(HttpMethod.Get, $"/storage/v1/object/{Uri.EscapeDataString(_bucket)}/{reference}");
+        using var request = CreateRequest(HttpMethod.Get, ObjectPath(reference));
         using var response = await httpClientFactory.CreateClient().SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -76,6 +94,14 @@ public sealed class SupabaseFileStorageService(IHttpClientFactory httpClientFact
         return memory;
     }
 
+    public async Task DeleteAsync(string reference, CancellationToken cancellationToken = default)
+    {
+        using var request = CreateRequest(HttpMethod.Delete, $"/storage/v1/object/{Uri.EscapeDataString(_bucket)}");
+        request.Content = JsonContent.Create(new { prefixes = new[] { reference } });
+        using var response = await httpClientFactory.CreateClient().SendAsync(request, cancellationToken);
+        if (response.StatusCode != System.Net.HttpStatusCode.NotFound) response.EnsureSuccessStatusCode();
+    }
+
     private HttpRequestMessage CreateRequest(HttpMethod method, string path)
     {
         var request = new HttpRequestMessage(method, _baseUrl + path);
@@ -83,4 +109,7 @@ public sealed class SupabaseFileStorageService(IHttpClientFactory httpClientFact
         request.Headers.TryAddWithoutValidation("apikey", _serviceRoleKey);
         return request;
     }
+
+    private string ObjectPath(string reference) =>
+        $"/storage/v1/object/{Uri.EscapeDataString(_bucket)}/{string.Join('/', reference.Split('/').Select(Uri.EscapeDataString))}";
 }

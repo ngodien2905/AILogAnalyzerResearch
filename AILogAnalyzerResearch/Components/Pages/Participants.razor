@@ -1,0 +1,160 @@
+@page "/participants"
+@rendermode InteractiveServer
+@inject ResearchCatalogService CatalogService
+
+<PageTitle>Participants & Tasks</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">Study setup</span>
+        <h1>Participants &amp; coding tasks</h1>
+        <p>Create anonymous participant codes, define coding tasks and connect them through research assignments.</p>
+    </div>
+</div>
+
+@if (message is not null)
+{
+    <div class="alert @(messageIsError ? "alert-error" : "alert-success")">@message</div>
+}
+
+<div class="three-grid" style="margin-bottom:1rem">
+    <section class="card">
+        <div class="card-header"><div><h2>Add participant</h2><p>Use an anonymous research code</p></div></div>
+        <div class="card-body form-grid">
+            <div class="field full"><label for="participant-code">Participant code</label><input id="participant-code" class="control" maxlength="16" placeholder="e.g. P004" @bind="participantCode" @bind:event="oninput" /></div>
+            <div class="field"><label for="course">Course</label><select id="course" class="control" @bind="participantCourse">@foreach (var course in Enum.GetValues<CourseCode>()) { <option value="@course">@course</option> }</select></div>
+            <div class="field"><label for="research-group">Research group</label><input id="research-group" class="control" maxlength="40" placeholder="Optional" @bind="researchGroup" @bind:event="oninput" /></div>
+            <div class="full button-row"><button class="btn-primary" disabled="@isSaving" @onclick="CreateParticipantAsync">Create participant</button></div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header"><div><h2>Add coding task</h2><p>Define the activity being studied</p></div></div>
+        <div class="card-body form-grid">
+            <div class="field"><label for="task-code">Task code</label><input id="task-code" class="control" maxlength="24" placeholder="e.g. T03" @bind="taskCode" @bind:event="oninput" /></div>
+            <div class="field"><label for="task-title">Title</label><input id="task-title" class="control" maxlength="160" placeholder="Task title" @bind="taskTitle" @bind:event="oninput" /></div>
+            <div class="field full"><label for="task-description">Description</label><textarea id="task-description" class="control" maxlength="1200" placeholder="Optional instructions" @bind="taskDescription" @bind:event="oninput"></textarea></div>
+            <div class="full button-row"><button class="btn-primary" disabled="@isSaving" @onclick="CreateTaskAsync">Create task</button></div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header"><div><h2>Create assignment</h2><p>Link a participant to a task</p></div></div>
+        <div class="card-body form-grid">
+            <div class="field full"><label for="assign-participant">Participant</label><select id="assign-participant" class="control" @bind="selectedParticipantId"><option value="@Guid.Empty">Select participant</option>@foreach (var participant in participants) { <option value="@participant.Id">@participant.ParticipantCode · @participant.Course</option> }</select></div>
+            <div class="field full"><label for="assign-task">Coding task</label><select id="assign-task" class="control" @bind="selectedTaskId"><option value="@Guid.Empty">Select coding task</option>@foreach (var task in tasks) { <option value="@task.Id">@task.TaskCode · @task.Title</option> }</select></div>
+            <div class="full button-row"><button class="btn-primary" disabled="@isSaving" @onclick="AssignAsync">Assign task</button></div>
+        </div>
+    </section>
+</div>
+
+@if (isLoading)
+{
+    <div class="loading">Loading study catalog…</div>
+}
+else
+{
+    <div class="split-grid">
+        <section class="card">
+            <div class="card-header"><div><h2>Participant registry</h2><p>@participants.Count anonymous records</p></div><span class="badge badge-blue">@participants.Count total</span></div>
+            @if (participants.Count == 0) { <div class="empty-state">No participants have been created.</div> }
+            else
+            {
+                <div class="table-wrap"><table class="data-table"><thead><tr><th>Code</th><th>Course</th><th>Group</th><th>Created</th></tr></thead><tbody>
+                @foreach (var participant in participants)
+                {
+                    <tr><td class="code">@participant.ParticipantCode</td><td><span class="badge badge-blue">@participant.Course</span></td><td>@(participant.ResearchGroup ?? "—")</td><td>@participant.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td></tr>
+                }
+                </tbody></table></div>
+            }
+        </section>
+
+        <section class="card">
+            <div class="card-header"><div><h2>Task assignments</h2><p>Participant-to-task evidence units</p></div><span class="badge badge-green">@assignments.Count linked</span></div>
+            @if (assignments.Count == 0) { <div class="empty-state">No assignments have been created.</div> }
+            else
+            {
+                <div class="table-wrap"><table class="data-table"><thead><tr><th>Participant</th><th>Task</th><th>Title</th><th>Assigned</th></tr></thead><tbody>
+                @foreach (var assignment in assignments)
+                {
+                    <tr><td class="code">@assignment.Participant.ParticipantCode</td><td class="code">@assignment.CodingTask.TaskCode</td><td>@assignment.CodingTask.Title</td><td>@assignment.AssignedAt.ToLocalTime().ToString("dd MMM yyyy")</td></tr>
+                }
+                </tbody></table></div>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<Participant> participants = [];
+    private IReadOnlyList<CodingTask> tasks = [];
+    private IReadOnlyList<TaskAssignment> assignments = [];
+    private string participantCode = string.Empty;
+    private CourseCode participantCourse = CourseCode.PRF;
+    private string? researchGroup;
+    private string taskCode = string.Empty;
+    private string taskTitle = string.Empty;
+    private string? taskDescription;
+    private Guid selectedParticipantId;
+    private Guid selectedTaskId;
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? message;
+    private bool messageIsError;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            participants = await CatalogService.GetParticipantsAsync();
+            tasks = await CatalogService.GetCodingTasksAsync();
+            assignments = await CatalogService.GetAssignmentsAsync();
+        }
+        catch (Exception exception) { SetMessage($"Could not load study setup: {exception.Message}", true); }
+        finally { isLoading = false; }
+    }
+
+    private async Task CreateParticipantAsync()
+    {
+        await RunActionAsync(async () =>
+        {
+            var created = await CatalogService.CreateParticipantAsync(new(participantCode, participantCourse, researchGroup));
+            participantCode = string.Empty; researchGroup = null;
+            SetMessage($"Participant {created.ParticipantCode} was created.");
+        });
+    }
+
+    private async Task CreateTaskAsync()
+    {
+        await RunActionAsync(async () =>
+        {
+            var created = await CatalogService.CreateCodingTaskAsync(new(taskCode, taskTitle, taskDescription));
+            taskCode = string.Empty; taskTitle = string.Empty; taskDescription = null;
+            SetMessage($"Coding task {created.TaskCode} was created.");
+        });
+    }
+
+    private async Task AssignAsync()
+    {
+        if (selectedParticipantId == Guid.Empty || selectedTaskId == Guid.Empty) { SetMessage("Select both a participant and a coding task.", true); return; }
+        await RunActionAsync(async () =>
+        {
+            await CatalogService.AssignAsync(selectedParticipantId, selectedTaskId);
+            SetMessage("The participant was assigned to the coding task.");
+        });
+    }
+
+    private async Task RunActionAsync(Func<Task> action)
+    {
+        if (isSaving) return;
+        isSaving = true;
+        try { await action(); await LoadAsync(); }
+        catch (Exception exception) when (exception is ResearchValidationException or ResearchNotFoundException) { SetMessage(exception.Message, true); }
+        catch (Exception exception) { SetMessage($"The operation failed: {exception.Message}", true); }
+        finally { isSaving = false; }
+    }
+
+    private void SetMessage(string value, bool isError = false) { message = value; messageIsError = isError; }
+}

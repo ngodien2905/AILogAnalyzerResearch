@@ -1,0 +1,129 @@
+@page "/assessments"
+@rendermode InteractiveServer
+@inject ResearchSubmissionService SubmissionService
+
+<PageTitle>Rubric Assessments</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">Coding outcomes</span>
+        <h1>Source submission assessment</h1>
+        <p>Inspect submitted source files and record the five-part coding rubric. Scores total 10 points.</p>
+    </div>
+</div>
+
+@if (message is not null) { <div class="alert @(messageIsError ? "alert-error" : "alert-success")">@message</div> }
+
+@if (isLoading)
+{
+    <div class="loading">Loading source submissions…</div>
+}
+else
+{
+    <div class="detail-grid">
+        <section class="card">
+            <div class="card-header"><div><h2>Submission registry</h2><p>@submissions.Count files received</p></div><span class="badge badge-blue">@submissions.Count(x => x.Assessment is null) awaiting score</span></div>
+            @if (submissions.Count == 0)
+            {
+                <div class="empty-state">No source files have been submitted yet.</div>
+            }
+            else
+            {
+                <div class="record-list">
+                    @foreach (var submission in submissions)
+                    {
+                        <button type="button" class="record-row @(selected?.Id == submission.Id ? "selected" : null)" @onclick="() => Select(submission)">
+                            <span class="record-row-top"><strong><span class="code">@submission.TaskAssignment.Participant.ParticipantCode</span> · @submission.TaskAssignment.CodingTask.TaskCode</strong>@if (submission.Assessment is null) { <span class="badge badge-amber">Not assessed</span> } else { <span class="badge badge-green">@submission.Assessment.TotalScore.ToString("0.0") / 10</span> }</span>
+                            <span class="record-row-meta">@submission.OriginalFileName<br />@FormatSize(submission.SizeBytes) · @(submission.IsFinal ? "Final submission" : "Draft")</span>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="card detail-panel">
+            @if (selected is null)
+            {
+                <div class="empty-state">Select a source submission to open its rubric.</div>
+            }
+            else
+            {
+                <div class="card-header">
+                    <div><h2>@selected.TaskAssignment.Participant.ParticipantCode · @selected.TaskAssignment.CodingTask.TaskCode</h2><p>@selected.OriginalFileName · submitted @selected.SubmittedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</p></div>
+                    <a class="btn-secondary" href="@($"/api/submissions/{selected.Id}/download")">Download source</a>
+                </div>
+                <div class="card-body stack">
+                    <div class="score-total"><span>Current rubric total</span><strong>@Total.ToString("0.0") / 10</strong></div>
+                    <div class="form-grid">
+                        <div class="field"><label for="correctness">Correctness (0–4)</label><input id="correctness" class="control" type="number" min="0" max="4" step="0.1" @bind="correctness" /><span class="score-help">Does the solution satisfy functional requirements?</span></div>
+                        <div class="field"><label for="quality">Code quality (0–2)</label><input id="quality" class="control" type="number" min="0" max="2" step="0.1" @bind="codeQuality" /><span class="score-help">Clarity, structure and maintainability.</span></div>
+                        <div class="field"><label for="efficiency">Solution efficiency (0–1)</label><input id="efficiency" class="control" type="number" min="0" max="1" step="0.1" @bind="solutionEfficiency" /><span class="score-help">Appropriate algorithm and resource use.</span></div>
+                        <div class="field"><label for="testing">Testing &amp; error handling (0–1)</label><input id="testing" class="control" type="number" min="0" max="1" step="0.1" @bind="testingErrorHandling" /><span class="score-help">Coverage of edge cases and failures.</span></div>
+                        <div class="field"><label for="explanation">Ability to explain (0–2)</label><input id="explanation" class="control" type="number" min="0" max="2" step="0.1" @bind="abilityToExplain" /><span class="score-help">Demonstrated understanding of the solution.</span></div>
+                        <div class="field full"><label for="assessment-notes">Assessment notes</label><textarea id="assessment-notes" class="control" maxlength="1000" placeholder="Evidence, feedback or scoring rationale" @bind="notes" @bind:event="oninput"></textarea></div>
+                    </div>
+                    <div class="button-row"><button class="btn-primary" disabled="@isSaving" @onclick="SaveAsync">Save assessment</button></div>
+                </div>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<SourceSubmission> submissions = [];
+    private SourceSubmission? selected;
+    private decimal correctness;
+    private decimal codeQuality;
+    private decimal solutionEfficiency;
+    private decimal testingErrorHandling;
+    private decimal abilityToExplain;
+    private string? notes;
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? message;
+    private bool messageIsError;
+    private decimal Total => correctness + codeQuality + solutionEfficiency + testingErrorHandling + abilityToExplain;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync(Guid? keepSelected = null)
+    {
+        try
+        {
+            submissions = await SubmissionService.GetSubmissionsAsync();
+            var next = keepSelected is null ? submissions.FirstOrDefault() : submissions.FirstOrDefault(x => x.Id == keepSelected);
+            if (next is not null) Select(next); else selected = null;
+        }
+        catch (Exception exception) { SetMessage($"Could not load source submissions: {exception.Message}", true); }
+        finally { isLoading = false; }
+    }
+
+    private void Select(SourceSubmission submission)
+    {
+        selected = submission;
+        correctness = submission.Assessment?.Correctness ?? 0;
+        codeQuality = submission.Assessment?.CodeQuality ?? 0;
+        solutionEfficiency = submission.Assessment?.SolutionEfficiency ?? 0;
+        testingErrorHandling = submission.Assessment?.TestingErrorHandling ?? 0;
+        abilityToExplain = submission.Assessment?.AbilityToExplain ?? 0;
+        notes = submission.Assessment?.Notes;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (selected is null || isSaving) return;
+        isSaving = true;
+        try
+        {
+            await SubmissionService.SaveAssessmentAsync(selected.Id, new(correctness, codeQuality, solutionEfficiency, testingErrorHandling, abilityToExplain, notes));
+            SetMessage("The rubric assessment was saved.");
+            await LoadAsync(selected.Id);
+        }
+        catch (Exception exception) when (exception is ResearchValidationException or ResearchNotFoundException) { SetMessage(exception.Message, true); }
+        catch (Exception exception) { SetMessage($"Could not save the assessment: {exception.Message}", true); }
+        finally { isSaving = false; }
+    }
+
+    private void SetMessage(string value, bool isError = false) { message = value; messageIsError = isError; }
+    private static string FormatSize(long bytes) => bytes < 1024 ? $"{bytes} B" : bytes < 1024 * 1024 ? $"{bytes / 1024d:0.0} KB" : $"{bytes / 1024d / 1024d:0.0} MB";
+}

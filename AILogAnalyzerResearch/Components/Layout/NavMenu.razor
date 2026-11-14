@@ -1,28 +1,39 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+<div class="top-row navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">AILogAnalyzerResearch</a>
+        <a class="navbar-brand" href="">
+            <span class="brand-mark">AI</span>
+            <span><strong>Log Analyzer</strong><small>Research Console</small></span>
+        </a>
     </div>
 </div>
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="flex-column">
-        <div class="nav-item px-3">
+        <div class="nav-item">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+                <span class="nav-icon" aria-hidden="true">⌂</span> Dashboard
             </NavLink>
         </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
+        <div class="nav-item">
+            <NavLink class="nav-link" href="participants">
+                <span class="nav-icon" aria-hidden="true">◎</span> Participants &amp; Tasks
             </NavLink>
         </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
+        <div class="nav-item">
+            <NavLink class="nav-link" href="review">
+                <span class="nav-icon" aria-hidden="true">☷</span> Review AI Logs
+            </NavLink>
+        </div>
+        <div class="nav-item">
+            <NavLink class="nav-link" href="assessments">
+                <span class="nav-icon" aria-hidden="true">✓</span> Assessments
             </NavLink>
         </div>
     </nav>
+
+    <div class="sidebar-note">
+        <span>Research integrity</span>
+        Only reviewed, valid logs are included in research metrics.
+    </div>
 </div>

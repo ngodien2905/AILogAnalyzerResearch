@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AILogAnalyzerResearch.Data;
 
 namespace AILogAnalyzerResearch.Services;
@@ -13,7 +14,8 @@ public sealed record ImportedInteraction(
     string Prompt,
     string Response,
     DateTimeOffset OccurredAt,
-    UsageCategory Category);
+    UsageCategory Category,
+    bool HasExplicitTimestamp);
 
 public sealed class LogImportService
 {
@@ -21,9 +23,15 @@ public sealed class LogImportService
     {
         using var reader = new StreamReader(content, Encoding.UTF8, true, leaveOpen: true);
         var text = await reader.ReadToEndAsync(cancellationToken);
-        return Path.GetExtension(fileName).Equals(".json", StringComparison.OrdinalIgnoreCase)
-            ? ParseJson(text)
-            : ParseCsv(text);
+        if (string.IsNullOrWhiteSpace(text)) throw new InvalidDataException("The import file is empty.");
+
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".json" => ParseJson(text),
+            ".csv" => ParseCsv(text),
+            ".txt" => ParseText(text),
+            _ => throw new InvalidDataException("Supported log formats are .json, .csv, and .txt.")
+        };
     }
 
     private static IReadOnlyList<ImportedInteraction> ParseJson(string text)
@@ -42,6 +50,7 @@ public sealed class LogImportService
     private static ImportedInteraction ReadJsonItem(JsonElement item)
     {
         var timestamp = Value(item, "timestamp", "occurredAt", "time", "createdAt");
+        var hasTimestamp = DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var occurredAt);
         return new ImportedInteraction(
             Value(item, "participantId", "participantCode", "participant"),
             Value(item, "taskId", "taskCode", "task"),
@@ -49,9 +58,9 @@ public sealed class LogImportService
             ParseEnum(Value(item, "plan", "aiPlan"), AiPlan.Unknown),
             Value(item, "prompt", "question", "userMessage") ?? string.Empty,
             Value(item, "response", "answer", "assistantMessage") ?? string.Empty,
-            DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var occurredAt)
-                ? occurredAt : DateTimeOffset.UtcNow,
-            ParseEnum(Value(item, "category", "usageCategory"), UsageCategory.Unclassified));
+            hasTimestamp ? occurredAt : DateTimeOffset.UtcNow,
+            ParseEnum(Value(item, "category", "usageCategory"), UsageCategory.Unclassified),
+            hasTimestamp);
     }
 
     private static IReadOnlyList<ImportedInteraction> ParseCsv(string text)
@@ -72,6 +81,7 @@ public sealed class LogImportService
         return rows.Skip(1).Where(row => row.Any(value => !string.IsNullOrWhiteSpace(value))).Select(row =>
         {
             var timestamp = Get(row, "timestamp", "occurredAt", "time", "createdAt");
+            var hasTimestamp = DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var occurredAt);
             return new ImportedInteraction(
                 Get(row, "participantId", "participantCode", "participant"),
                 Get(row, "taskId", "taskCode", "task"),
@@ -79,10 +89,48 @@ public sealed class LogImportService
                 ParseEnum(Get(row, "plan", "aiPlan"), AiPlan.Unknown),
                 Get(row, "prompt", "question", "userMessage") ?? string.Empty,
                 Get(row, "response", "answer", "assistantMessage") ?? string.Empty,
-                DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var occurredAt)
-                    ? occurredAt : DateTimeOffset.UtcNow,
-                ParseEnum(Get(row, "category", "usageCategory"), UsageCategory.Unclassified));
+                hasTimestamp ? occurredAt : DateTimeOffset.UtcNow,
+                ParseEnum(Get(row, "category", "usageCategory"), UsageCategory.Unclassified),
+                hasTimestamp);
         }).ToList();
+    }
+
+    private static IReadOnlyList<ImportedInteraction> ParseText(string text)
+    {
+        static string? Header(string input, string name)
+        {
+            var match = Regex.Match(input, $@"(?im)^\s*{Regex.Escape(name)}\s*:\s*(.+?)\s*$", RegexOptions.CultureInvariant);
+            return match.Success ? match.Groups[1].Value.Trim() : null;
+        }
+
+        var promptMatch = Regex.Match(
+            text,
+            @"(?ims)^\s*Prompt\s*:\s*(?<prompt>.*?)(?:^\s*Response\s*:)",
+            RegexOptions.CultureInvariant);
+        var responseMatch = Regex.Match(
+            text,
+            @"(?ims)^\s*Response\s*:\s*(?<response>.*)$",
+            RegexOptions.CultureInvariant);
+        if (!promptMatch.Success || !responseMatch.Success)
+        {
+            throw new InvalidDataException("Text imports must contain 'Prompt:' and 'Response:' sections.");
+        }
+
+        var timestamp = Header(text, "Timestamp");
+        var hasTimestamp = DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var occurredAt);
+        return
+        [
+            new ImportedInteraction(
+                Header(text, "Participant") ?? Header(text, "ParticipantId"),
+                Header(text, "Task") ?? Header(text, "TaskId"),
+                Header(text, "Platform") ?? Header(text, "AI Tool") ?? "Unknown",
+                ParseEnum(Header(text, "Plan"), AiPlan.Unknown),
+                promptMatch.Groups["prompt"].Value.Trim(),
+                responseMatch.Groups["response"].Value.Trim(),
+                hasTimestamp ? occurredAt : DateTimeOffset.UtcNow,
+                ParseEnum(Header(text, "Category"), UsageCategory.Unclassified),
+                hasTimestamp)
+        ];
     }
 
     private static IEnumerable<IReadOnlyList<string>> ParseCsvRows(string text)

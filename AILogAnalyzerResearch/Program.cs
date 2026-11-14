@@ -1,5 +1,6 @@
 using AILogAnalyzerResearch.Components;
 using AILogAnalyzerResearch.Data;
+using AILogAnalyzerResearch.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
@@ -36,6 +37,23 @@ builder.Services.AddDbContextFactory<ResearchDbContext>(options =>
     });
 });
 
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<LogImportService>();
+builder.Services.AddScoped<ResearchCatalogService>();
+builder.Services.AddScoped<ResearchInteractionService>();
+builder.Services.AddScoped<ResearchSubmissionService>();
+builder.Services.AddScoped<ResearchMetricsService>();
+builder.Services.AddScoped<DemoDataSeeder>();
+builder.Services.AddSingleton<IFileStorageService>(services =>
+{
+    var configuration = services.GetRequiredService<IConfiguration>();
+    var useSupabase = !string.IsNullOrWhiteSpace(configuration["Supabase:Url"]) &&
+                      !string.IsNullOrWhiteSpace(configuration["Supabase:ServiceRoleKey"]);
+    return useSupabase
+        ? ActivatorUtilities.CreateInstance<SupabaseFileStorageService>(services)
+        : ActivatorUtilities.CreateInstance<LocalFileStorageService>(services);
+});
+
 var app = builder.Build();
 
 await using (var scope = app.Services.CreateAsyncScope())
@@ -53,6 +71,9 @@ await using (var scope = app.Services.CreateAsyncScope())
     {
         await db.Database.EnsureCreatedAsync();
     }
+
+    var seeder = scope.ServiceProvider.GetRequiredService<DemoDataSeeder>();
+    await seeder.SeedAsync();
 }
 
 // Configure the HTTP request pipeline.
@@ -70,6 +91,26 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+
+app.MapGet("/api/submissions/{id:guid}/download", async Task<IResult> (
+    Guid id,
+    ResearchSubmissionService submissionService,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var download = await submissionService.OpenAsync(id, cancellationToken);
+        return Results.Stream(
+            download.Content,
+            download.ContentType,
+            download.FileName,
+            enableRangeProcessing: true);
+    }
+    catch (ResearchNotFoundException)
+    {
+        return Results.NotFound();
+    }
+});
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

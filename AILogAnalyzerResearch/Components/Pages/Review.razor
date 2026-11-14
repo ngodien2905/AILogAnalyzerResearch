@@ -1,0 +1,146 @@
+@page "/review"
+@rendermode InteractiveServer
+@inject ResearchInteractionService InteractionService
+
+<PageTitle>Review AI Logs</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">Data quality</span>
+        <h1>Review AI interaction logs</h1>
+        <p>Validate each prompt–response pair, assign a usage category and decide whether it belongs in the research dataset.</p>
+    </div>
+    <div class="field" style="min-width:190px">
+        <label for="status-filter">Queue filter</label>
+        <select id="status-filter" class="control" @bind="statusFilter">
+            <option value="All">All statuses</option>
+            @foreach (var status in Enum.GetValues<ReviewStatus>()) { <option value="@status">@FormatEnum(status)</option> }
+        </select>
+    </div>
+</div>
+
+@if (message is not null) { <div class="alert @(messageIsError ? "alert-error" : "alert-success")">@message</div> }
+
+@if (isLoading)
+{
+    <div class="loading">Loading interaction queue…</div>
+}
+else
+{
+    <div class="detail-grid">
+        <section class="card">
+            <div class="card-header"><div><h2>Review queue</h2><p>@FilteredLogs.Count interactions shown</p></div><span class="badge badge-amber">@logs.Count(x => x.ReviewStatus == ReviewStatus.Pending) pending</span></div>
+            @if (FilteredLogs.Count == 0)
+            {
+                <div class="empty-state">No interactions match this filter.</div>
+            }
+            else
+            {
+                <div class="record-list">
+                    @foreach (var log in FilteredLogs)
+                    {
+                        <button type="button" class="record-row @(selected?.InteractionId == log.InteractionId ? "selected" : null)" @onclick="() => Select(log)">
+                            <span class="record-row-top"><strong><span class="code">@log.ParticipantCode</span> · @log.TaskCode</strong><span class="badge @StatusBadge(log.ReviewStatus)">@FormatEnum(log.ReviewStatus)</span></span>
+                            <span class="record-row-meta">@log.Platform · @FormatEnum(log.Category)<br />@Truncate(log.Prompt, 82)</span>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="card detail-panel">
+            @if (selected is null)
+            {
+                <div class="empty-state">Select an interaction to inspect its prompt, response and classification.</div>
+            }
+            else
+            {
+                <div class="card-header">
+                    <div><h2>@selected.ParticipantCode · @selected.TaskCode</h2><p>@selected.Platform · @selected.OccurredAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</p></div>
+                    <span class="badge @(selected.IsValid ? "badge-green" : "badge-red")">@(selected.IsValid ? "Valid input" : "Flagged")</span>
+                </div>
+                <div class="card-body stack">
+                    <div><div class="section-label">Student prompt</div><div class="text-block">@selected.Prompt</div></div>
+                    <div><div class="section-label">AI response</div><div class="text-block">@selected.Response</div></div>
+                    <div class="form-grid">
+                        <div class="field"><label for="usage-category">Usage category</label><select id="usage-category" class="control" @bind="editCategory">@foreach (var category in Enum.GetValues<UsageCategory>()) { <option value="@category">@FormatEnum(category)</option> }</select></div>
+                        <div class="field"><label for="review-status">Review status</label><select id="review-status" class="control" @bind="editStatus">@foreach (var status in Enum.GetValues<ReviewStatus>()) { <option value="@status">@FormatEnum(status)</option> }</select></div>
+                        <div class="field full"><label><input type="checkbox" @bind="editIsValid" /> Include as a valid interaction</label><small>Only valid interactions with Reviewed status are included in metrics.</small></div>
+                        <div class="field full"><label for="validation-note">Validation note</label><textarea id="validation-note" class="control" maxlength="400" placeholder="Why is this record valid or invalid?" @bind="editValidationNote" @bind:event="oninput"></textarea></div>
+                        <div class="field full"><label for="reviewer-note">Reviewer note</label><textarea id="reviewer-note" class="control" maxlength="400" placeholder="Classification rationale or follow-up note" @bind="editReviewerNote" @bind:event="oninput"></textarea></div>
+                    </div>
+                    <div class="button-row"><button class="btn-primary" disabled="@isSaving" @onclick="SaveAsync">Save review</button><button class="btn-secondary" @onclick="SelectNext">Next record</button></div>
+                </div>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<InteractionReviewItem> logs = [];
+    private InteractionReviewItem? selected;
+    private string statusFilter = "All";
+    private UsageCategory editCategory;
+    private ReviewStatus editStatus;
+    private bool editIsValid;
+    private string? editValidationNote;
+    private string? editReviewerNote;
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? message;
+    private bool messageIsError;
+
+    private IReadOnlyList<InteractionReviewItem> FilteredLogs => statusFilter == "All"
+        ? logs
+        : logs.Where(x => x.ReviewStatus.ToString() == statusFilter).ToList();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync(Guid? keepSelected = null)
+    {
+        try
+        {
+            logs = await InteractionService.GetReviewQueueAsync();
+            var next = keepSelected is null ? FilteredLogs.FirstOrDefault() : logs.FirstOrDefault(x => x.InteractionId == keepSelected);
+            if (next is not null) Select(next); else selected = null;
+        }
+        catch (Exception exception) { SetMessage($"Could not load the review queue: {exception.Message}", true); }
+        finally { isLoading = false; }
+    }
+
+    private void Select(InteractionReviewItem item)
+    {
+        selected = item;
+        editCategory = item.Category;
+        editStatus = item.ReviewStatus;
+        editIsValid = item.IsValid;
+        editValidationNote = item.ValidationNote;
+        editReviewerNote = item.ReviewerNote;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (selected is null || isSaving) return;
+        isSaving = true;
+        try
+        {
+            await InteractionService.ReviewAsync(selected.InteractionId, new(editCategory, editStatus, editIsValid, editReviewerNote, editValidationNote));
+            SetMessage("The interaction review was saved.");
+            await LoadAsync(selected.InteractionId);
+        }
+        catch (Exception exception) { SetMessage($"Could not save the review: {exception.Message}", true); }
+        finally { isSaving = false; }
+    }
+
+    private void SelectNext()
+    {
+        if (selected is null || FilteredLogs.Count == 0) return;
+        var index = FilteredLogs.ToList().FindIndex(x => x.InteractionId == selected.InteractionId);
+        Select(FilteredLogs[(index + 1) % FilteredLogs.Count]);
+    }
+
+    private void SetMessage(string value, bool isError = false) { message = value; messageIsError = isError; }
+    private static string StatusBadge(ReviewStatus status) => status switch { ReviewStatus.Reviewed => "badge-green", ReviewStatus.NeedsAttention => "badge-red", ReviewStatus.Excluded => "badge-gray", _ => "badge-amber" };
+    private static string FormatEnum(Enum value) => System.Text.RegularExpressions.Regex.Replace(value.ToString(), "(?<!^)([A-Z])", " $1");
+    private static string Truncate(string value, int length) => value.Length <= length ? value : value[..length] + "…";
+}
