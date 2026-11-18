@@ -1,0 +1,201 @@
+@page "/participant"
+@layout ParticipantLayout
+@rendermode InteractiveServer
+@inject ResearchCatalogService CatalogService
+@inject ResearchInteractionService InteractionService
+@inject ResearchSubmissionService SubmissionService
+
+<PageTitle>Participant Portal</PageTitle>
+
+<div class="participant-heading">
+    <div><span class="eyebrow">Student / Participant</span><h1>Submit your research evidence</h1><p>Use your anonymous participant ID. Select an assigned task before recording AI interactions or uploading files.</p></div>
+    <span class="privacy-chip">Anonymous data only</span>
+</div>
+
+@if (message is not null) { <div class="alert @(messageIsError ? "alert-error" : "alert-success")">@message</div> }
+
+@if (isLoading)
+{
+    <div class="loading">Loading participant assignments…</div>
+}
+else if (assignments.Count == 0)
+{
+    <div class="card empty-state">No participant assignments are available. Ask the research team to create your assignment.</div>
+}
+else
+{
+    <section class="card participant-selector">
+        <div><span class="step-number">1</span><div><strong>Identify your assignment</strong><small>No names or student IDs are stored here.</small></div></div>
+        <div class="field"><label for="participant-id">Anonymous participant ID</label><select id="participant-id" class="control" @bind="selectedParticipantId" @bind:after="ParticipantChanged">@foreach (var participant in Participants) { <option value="@participant.Id">@participant.ParticipantCode · @participant.Course</option> }</select></div>
+        <div class="field"><label for="participant-task">Assigned coding task</label><select id="participant-task" class="control" @bind="selectedAssignmentId" @bind:after="RefreshEvidenceAsync">@foreach (var assignment in ParticipantAssignments) { <option value="@assignment.Id">@assignment.CodingTask.TaskCode · @assignment.CodingTask.Title</option> }</select></div>
+    </section>
+
+    @if (SelectedAssignment is not null)
+    {
+        <div class="participant-workspace">
+            <div class="stack">
+                <section class="card task-brief">
+                    <div class="card-header"><div><h2>@SelectedAssignment.CodingTask.TaskCode · @SelectedAssignment.CodingTask.Title</h2><p>Your assigned programming task</p></div><span class="badge badge-blue">Active</span></div>
+                    <div class="card-body"><p>@(SelectedAssignment.CodingTask.Description ?? "Follow the task instructions provided by the research team.")</p><div class="scope-note"><strong>Testing scope</strong><span>Submit your source and testing evidence with the task. This MVP records files but does not compile or execute code online.</span></div></div>
+                </section>
+
+                <section class="card">
+                    <div class="card-header"><div><h2><span class="step-number small">2</span> Record an AI interaction</h2><p>Copy the exact prompt and AI response</p></div></div>
+                    <div class="card-body form-grid">
+                        <div class="field"><label for="ai-platform">AI platform</label><input id="ai-platform" class="control" maxlength="60" @bind="platform" @bind:event="oninput" /></div>
+                        <div class="field"><label for="ai-plan">Plan</label><select id="ai-plan" class="control" @bind="plan">@foreach (var option in Enum.GetValues<AiPlan>()) { <option value="@option">@option</option> }</select></div>
+                        <div class="field full"><label for="prompt">Prompt</label><textarea id="prompt" class="control evidence-text" placeholder="Paste the prompt you sent to the AI tool" @bind="prompt" @bind:event="oninput"></textarea></div>
+                        <div class="field full"><label for="response">AI response</label><textarea id="response" class="control evidence-text" placeholder="Paste the response returned by the AI tool" @bind="response" @bind:event="oninput"></textarea></div>
+                        <div class="field full"><label for="preliminary-category">Preliminary category</label><select id="preliminary-category" class="control" @bind="category">@foreach (var option in Enum.GetValues<UsageCategory>()) { <option value="@option">@FormatEnum(option)</option> }</select><small>The research team will verify this category before analysis.</small></div>
+                        <div class="full button-row"><button class="btn-primary" disabled="@isSaving" @onclick="SaveInteractionAsync">Save interaction</button></div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-header"><div><h2><span class="step-number small">3</span> Import AI log file</h2><p>Use an export from the browser collector or a supported file</p></div></div>
+                    <div class="card-body upload-area">
+                        <InputFile OnChange="SelectLogFile" accept=".json,.csv,.txt" />
+                        <div><strong>@(logFile?.Name ?? "Choose JSON, CSV or TXT")</strong><span>Maximum 10 MB. Rows without IDs use the selected participant and task.</span></div>
+                        <button class="btn-secondary" disabled="@(isSaving || logFile is null)" @onclick="ImportLogAsync">Import log</button>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-header"><div><h2><span class="step-number small">4</span> Upload source code</h2><p>Attach the code produced for this task</p></div></div>
+                    <div class="card-body stack">
+                        <div class="upload-area">
+                            <InputFile OnChange="SelectSourceFile" accept=".java,.cs,.js,.py,.zip" />
+                            <div><strong>@(sourceFile?.Name ?? "Choose source code or ZIP")</strong><span>.java, .cs, .js, .py or .zip · maximum 20 MB</span></div>
+                        </div>
+                        <label class="final-check"><input type="checkbox" @bind="isFinalSubmission" /> Mark this as my final submission</label>
+                        <div class="button-row"><button class="btn-primary" disabled="@(isSaving || sourceFile is null)" @onclick="SubmitSourceAsync">Upload source</button></div>
+                    </div>
+                </section>
+            </div>
+
+            <aside class="stack evidence-sidebar">
+                <section class="card">
+                    <div class="card-header"><div><h2>Submission status</h2><p>Evidence recorded for this task</p></div></div>
+                    <div class="status-list">
+                        <div><span>AI interactions</span><strong>@taskLogs.Count</strong></div>
+                        <div><span>Pending researcher review</span><strong>@taskLogs.Count(x => x.ReviewStatus == ReviewStatus.Pending)</strong></div>
+                        <div><span>Source files</span><strong>@taskSubmissions.Count</strong></div>
+                        <div><span>Final file received</span><strong class="@(taskSubmissions.Any(x => x.IsFinal) ? "status-yes" : null)">@(taskSubmissions.Any(x => x.IsFinal) ? "Yes" : "Not yet")</strong></div>
+                    </div>
+                </section>
+                <section class="card">
+                    <div class="card-header"><div><h2>Before you submit</h2></div></div>
+                    <div class="checklist"><span><i>1</i> Confirm the anonymous ID and task.</span><span><i>2</i> Include complete prompt–response pairs.</span><span><i>3</i> Remove personal information from files.</span><span><i>4</i> Mark only the final source submission as final.</span></div>
+                </section>
+            </aside>
+        </div>
+    }
+}
+
+@code {
+    private IReadOnlyList<TaskAssignment> assignments = [];
+    private IReadOnlyList<InteractionReviewItem> allLogs = [];
+    private IReadOnlyList<SourceSubmission> allSubmissions = [];
+    private IReadOnlyList<InteractionReviewItem> taskLogs = [];
+    private IReadOnlyList<SourceSubmission> taskSubmissions = [];
+    private Guid selectedParticipantId;
+    private Guid selectedAssignmentId;
+    private string platform = "ChatGPT";
+    private AiPlan plan = AiPlan.Unknown;
+    private UsageCategory category = UsageCategory.Unclassified;
+    private string prompt = string.Empty;
+    private string response = string.Empty;
+    private IBrowserFile? logFile;
+    private IBrowserFile? sourceFile;
+    private bool isFinalSubmission = true;
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? message;
+    private bool messageIsError;
+
+    private IReadOnlyList<Participant> Participants => assignments.Select(x => x.Participant).DistinctBy(x => x.Id).OrderBy(x => x.ParticipantCode).ToList();
+    private IReadOnlyList<TaskAssignment> ParticipantAssignments => assignments.Where(x => x.ParticipantId == selectedParticipantId).OrderBy(x => x.CodingTask.TaskCode).ToList();
+    private TaskAssignment? SelectedAssignment => assignments.FirstOrDefault(x => x.Id == selectedAssignmentId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            assignments = await CatalogService.GetAssignmentsAsync();
+            selectedParticipantId = Participants.FirstOrDefault()?.Id ?? Guid.Empty;
+            selectedAssignmentId = ParticipantAssignments.FirstOrDefault()?.Id ?? Guid.Empty;
+            await RefreshEvidenceAsync();
+        }
+        catch (Exception exception) { SetMessage($"Could not load participant assignments: {exception.Message}", true); }
+        finally { isLoading = false; }
+    }
+
+    private async Task ParticipantChanged()
+    {
+        selectedAssignmentId = ParticipantAssignments.FirstOrDefault()?.Id ?? Guid.Empty;
+        await RefreshEvidenceAsync();
+    }
+
+    private async Task RefreshEvidenceAsync()
+    {
+        var selected = SelectedAssignment;
+        if (selected is null) { taskLogs = []; taskSubmissions = []; return; }
+        allLogs = await InteractionService.GetReviewQueueAsync();
+        allSubmissions = await SubmissionService.GetSubmissionsAsync();
+        taskLogs = allLogs.Where(x => x.ParticipantCode == selected.Participant.ParticipantCode && x.TaskCode == selected.CodingTask.TaskCode).ToList();
+        taskSubmissions = allSubmissions.Where(x => x.TaskAssignmentId == selected.Id).ToList();
+    }
+
+    private async Task SaveInteractionAsync()
+    {
+        var selected = SelectedAssignment;
+        if (selected is null) { SetMessage("Select an assigned task first.", true); return; }
+        await RunActionAsync(async () =>
+        {
+            await InteractionService.AddManualAsync(new(selected.Id, platform, plan, prompt, response, PreliminaryCategory: category));
+            prompt = string.Empty; response = string.Empty; category = UsageCategory.Unclassified;
+            SetMessage("Your AI interaction was recorded for researcher review.");
+        });
+    }
+
+    private void SelectLogFile(InputFileChangeEventArgs args) { logFile = args.File; message = null; }
+    private async Task ImportLogAsync()
+    {
+        var selected = SelectedAssignment;
+        if (selected is null || logFile is null) { SetMessage("Choose an assignment and a log file.", true); return; }
+        await RunActionAsync(async () =>
+        {
+            await using var stream = logFile.OpenReadStream(10 * 1024 * 1024);
+            var result = await InteractionService.ImportAsync(stream, logFile.Name, selected.Participant.ParticipantCode, selected.CodingTask.TaskCode);
+            SetMessage($"Imported {result.ImportedRows} interactions. Skipped {result.DuplicateRows} duplicates and rejected {result.RejectedRows} rows.");
+            logFile = null;
+        });
+    }
+
+    private void SelectSourceFile(InputFileChangeEventArgs args) { sourceFile = args.File; message = null; }
+    private async Task SubmitSourceAsync()
+    {
+        var selected = SelectedAssignment;
+        if (selected is null || sourceFile is null) { SetMessage("Choose an assignment and a source file.", true); return; }
+        await RunActionAsync(async () =>
+        {
+            await using var stream = sourceFile.OpenReadStream(ResearchSubmissionService.MaximumFileSize);
+            await SubmissionService.SubmitAsync(selected.Id, stream, sourceFile.Name, sourceFile.ContentType, isFinalSubmission);
+            SetMessage($"{sourceFile.Name} was uploaded successfully.");
+            sourceFile = null;
+        });
+    }
+
+    private async Task RunActionAsync(Func<Task> action)
+    {
+        if (isSaving) return;
+        isSaving = true;
+        try { await action(); await RefreshEvidenceAsync(); }
+        catch (Exception exception) when (exception is ResearchValidationException or ResearchNotFoundException) { SetMessage(exception.Message, true); }
+        catch (Exception exception) { SetMessage($"The submission could not be completed: {exception.Message}", true); }
+        finally { isSaving = false; }
+    }
+
+    private void SetMessage(string value, bool isError = false) { message = value; messageIsError = isError; }
+    private static string FormatEnum(Enum value) => System.Text.RegularExpressions.Regex.Replace(value.ToString(), "(?<!^)([A-Z])", " $1");
+}

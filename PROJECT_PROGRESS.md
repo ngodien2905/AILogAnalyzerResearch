@@ -30,10 +30,12 @@
 
 ## Milestone 4 Student Interface
 
-- [ ] Participant and task selection
-- [ ] Manual AI interaction submission
-- [ ] JSON and CSV import
-- [ ] Source code upload
+- [x] Participant and task selection
+- [x] Manual AI interaction submission
+- [x] JSON CSV and TXT import
+- [x] Source code upload
+- [x] Separate participant and researcher workspaces
+- [ ] Research pre test and post test workflow pending scope confirmation
 
 ## Milestone 5 Metrics and Export
 

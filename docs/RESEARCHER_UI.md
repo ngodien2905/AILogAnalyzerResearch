@@ -4,10 +4,12 @@ The Blazor researcher workspace covers the administrative workflow in Milestone 
 
 ## Pages
 
-- `/` shows participant, interaction, review, submission, and assessment progress.
-- `/participants` creates anonymous participants and coding tasks, then links them as task assignments.
-- `/review` displays every AI interaction and supports category, validity, status, and reviewer notes.
-- `/assessments` lists source submissions and records the five-part 10-point coding rubric.
+- `/` is the role-selection entry point.
+- `/researcher` shows participant, interaction, review, submission, and assessment progress.
+- `/researcher/participants` creates anonymous participants and coding tasks, then links them as task assignments.
+- `/researcher/review` displays every AI interaction and supports category, validity, status, and reviewer notes.
+- `/researcher/assessments` lists source submissions and records the five-part 10-point coding rubric.
+- `/participant` lets a participant select an anonymous ID and task, record or import AI logs, and upload source code.
 
 The source download route is `/api/submissions/{submissionId}/download`. It uses the configured file storage service, so the same UI works with local storage and private Supabase Storage.
 

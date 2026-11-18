@@ -1,111 +1,35 @@
 @page "/"
-@rendermode InteractiveServer
-@inject ResearchMetricsService MetricsService
-@inject ResearchInteractionService InteractionService
-@inject ResearchCatalogService CatalogService
 
-<PageTitle>Research Dashboard</PageTitle>
+<PageTitle>AI Coding Research Portal</PageTitle>
 
-<div class="page-heading">
-    <div>
-        <span class="eyebrow">Overview</span>
-        <h1>Research dashboard</h1>
-        <p>Track collection readiness, review quality and coding assessment progress from one workspace.</p>
-    </div>
-    <a class="btn-primary" href="review">Review pending logs →</a>
+<section class="role-hero">
+    <span class="eyebrow">Research support application</span>
+    <h1>Choose your workspace</h1>
+    <p>Participants submit AI interaction evidence and source code. Researchers manage the study, review logs and assess coding outcomes.</p>
+</section>
+
+<div class="role-grid">
+    <a class="role-card participant-role" href="/participant">
+        <span class="role-icon">P</span>
+        <span class="role-kicker">Student / Participant</span>
+        <h2>Submit research evidence</h2>
+        <p>Select your anonymous participant ID and assigned task, then record or import AI logs and upload your source code.</p>
+        <span class="role-features"><i>✓</i> Manual interaction entry</span>
+        <span class="role-features"><i>✓</i> JSON, CSV and TXT import</span>
+        <span class="role-features"><i>✓</i> Source code submission</span>
+        <strong>Open participant portal →</strong>
+    </a>
+
+    <a class="role-card researcher-role" href="/researcher">
+        <span class="role-icon">R</span>
+        <span class="role-kicker">Researcher / Admin</span>
+        <h2>Manage the research dataset</h2>
+        <p>Manage participants and assignments, review AI usage classifications and score submitted code with the research rubric.</p>
+        <span class="role-features"><i>✓</i> Participant and task management</span>
+        <span class="role-features"><i>✓</i> AI log quality review</span>
+        <span class="role-features"><i>✓</i> Coding assessment</span>
+        <strong>Open researcher console →</strong>
+    </a>
 </div>
 
-@if (isLoading)
-{
-    <div class="loading">Loading research overview…</div>
-}
-else if (error is not null)
-{
-    <div class="alert alert-error">@error</div>
-}
-else if (metrics is not null)
-{
-    <div class="metrics-grid">
-        <div class="card metric-card"><span class="metric-label">Participants</span><strong class="metric-value">@metrics.ParticipantCount</strong><span class="metric-detail">Across active research groups</span></div>
-        <div class="card metric-card"><span class="metric-label">AI interactions</span><strong class="metric-value">@metrics.InteractionCount</strong><span class="metric-detail">Imported and manually captured</span></div>
-        <div class="card metric-card"><span class="metric-label">Pending review</span><strong class="metric-value">@metrics.PendingReviewCount</strong><span class="metric-detail">@metrics.InvalidInteractionCount flagged invalid</span></div>
-        <div class="card metric-card"><span class="metric-label">Assessments</span><strong class="metric-value">@metrics.AssessmentCount</strong><span class="metric-detail">From @metrics.SubmissionCount source submissions</span></div>
-    </div>
-
-    <div class="dashboard-grid">
-        <section class="card">
-            <div class="card-header">
-                <div><h2>Research pipeline</h2><p>Completion status across the evidence workflow</p></div>
-                <span class="badge badge-blue">@assignments.Count assignments</span>
-            </div>
-            <div class="card-body">
-                <div class="pipeline">
-                    <div class="pipeline-step"><strong>@metrics.ParticipantCount</strong><span>Participants enrolled</span><div class="progress-track"><i style="width:100%"></i></div></div>
-                    <div class="pipeline-step"><strong>@metrics.InteractionCount</strong><span>Logs collected</span><div class="progress-track"><i style="width:@Percent(metrics.InteractionCount - metrics.PendingReviewCount, metrics.InteractionCount)%"></i></div></div>
-                    <div class="pipeline-step"><strong>@metrics.SubmissionCount</strong><span>Files submitted</span><div class="progress-track"><i style="width:@Percent(metrics.SubmissionCount, assignments.Count)%"></i></div></div>
-                    <div class="pipeline-step"><strong>@metrics.AssessmentCount</strong><span>Rubrics completed</span><div class="progress-track"><i style="width:@Percent(metrics.AssessmentCount, metrics.SubmissionCount)%"></i></div></div>
-                </div>
-            </div>
-        </section>
-
-        <section class="card">
-            <div class="card-header"><div><h2>Quality checkpoint</h2><p>What needs attention next</p></div></div>
-            <div class="list">
-                <div class="list-item"><div><strong>Pending classification</strong><small>Validate category and research inclusion</small></div><span class="badge badge-amber">@metrics.PendingReviewCount</span></div>
-                <div class="list-item"><div><strong>Invalid interactions</strong><small>Excluded from calculated metrics</small></div><span class="badge @(metrics.InvalidInteractionCount > 0 ? "badge-red" : "badge-green")">@metrics.InvalidInteractionCount</span></div>
-                <div class="list-item"><div><strong>Unassessed submissions</strong><small>Awaiting researcher rubric</small></div><span class="badge badge-blue">@Math.Max(0, metrics.SubmissionCount - metrics.AssessmentCount)</span></div>
-            </div>
-        </section>
-    </div>
-
-    <section class="card" style="margin-top:1rem">
-        <div class="card-header">
-            <div><h2>Latest pending logs</h2><p>Most recent AI interactions waiting for review</p></div>
-            <a href="review">Open review queue</a>
-        </div>
-        @if (pendingLogs.Count == 0)
-        {
-            <div class="empty-state">The review queue is clear.</div>
-        }
-        else
-        {
-            <div class="table-wrap">
-                <table class="data-table">
-                    <thead><tr><th>Participant</th><th>Task</th><th>Platform</th><th>Preliminary category</th><th>Occurred</th><th>Status</th></tr></thead>
-                    <tbody>
-                    @foreach (var log in pendingLogs)
-                    {
-                        <tr><td class="code">@log.ParticipantCode</td><td>@log.TaskCode</td><td>@log.Platform</td><td>@FormatEnum(log.Category)</td><td>@log.OccurredAt.ToLocalTime().ToString("dd MMM, HH:mm")</td><td><span class="badge badge-amber">Pending</span></td></tr>
-                    }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </section>
-}
-
-@code {
-    private DashboardMetrics? metrics;
-    private IReadOnlyList<InteractionReviewItem> pendingLogs = [];
-    private IReadOnlyList<TaskAssignment> assignments = [];
-    private bool isLoading = true;
-    private string? error;
-
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            metrics = await MetricsService.GetDashboardAsync();
-            pendingLogs = (await InteractionService.GetReviewQueueAsync(ReviewStatus.Pending)).Take(5).ToList();
-            assignments = await CatalogService.GetAssignmentsAsync();
-        }
-        catch (Exception exception)
-        {
-            error = $"Could not load the research dashboard: {exception.Message}";
-        }
-        finally { isLoading = false; }
-    }
-
-    private static int Percent(int value, int total) => total <= 0 ? 0 : Math.Clamp((int)Math.Round(value * 100d / total), 0, 100);
-    private static string FormatEnum(Enum value) => System.Text.RegularExpressions.Regex.Replace(value.ToString(), "(?<!^)([A-Z])", " $1");
-}
+<p class="privacy-note">Use only the anonymous participant ID supplied by the research team. Do not enter student names or personal information.</p>

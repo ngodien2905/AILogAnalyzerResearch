@@ -1,27 +1,11 @@
 @inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row">
-            <div>
-                <span class="top-label">Research workspace</span>
-                <strong>AI Coding Log Analyzer</strong>
-            </div>
-            <div class="environment-pill"><span></span> Local research dataset</div>
-        </div>
-
-        <article class="content">
-            @Body
-        </article>
-    </main>
+<div class="public-shell">
+    <header class="public-header">
+        <a class="public-brand" href="/"><span>AI</span><strong>AI Coding Research</strong></a>
+        <div class="public-status"><i></i> Research support workspace</div>
+    </header>
+    <main class="public-main">@Body</main>
 </div>
 
-<div id="blazor-error-ui">
-    The workspace encountered an error.
-    <a href="" class="reload">Reload</a>
-    <a class="dismiss">🗙</a>
-</div>
+<div id="blazor-error-ui">The workspace encountered an error. <a href="" class="reload">Reload</a><a class="dismiss">🗙</a></div>
