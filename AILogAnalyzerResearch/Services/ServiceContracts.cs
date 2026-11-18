@@ -61,6 +61,8 @@ public sealed record CreateAssessmentRequest(
 
 public sealed record SubmissionDownload(string FileName, string ContentType, Stream Content);
 
+public sealed record ResearchExportFile(string FileName, string ContentType, byte[] Content);
+
 public sealed record CategoryMetric(UsageCategory Category, int Count, decimal Percentage);
 
 public sealed record AssignmentMetrics(

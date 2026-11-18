@@ -1,0 +1,160 @@
+@page "/researcher/summary"
+@layout ResearcherLayout
+@rendermode InteractiveServer
+@inject ResearchCatalogService CatalogService
+@inject ResearchMetricsService MetricsService
+
+<PageTitle>Participant Research Summary</PageTitle>
+
+<div class="page-heading">
+    <div><span class="eyebrow">Metrics and export</span><h1>Participant research summary</h1><p>Review AI-usage metrics alongside coding scores and optional learning outcomes. Missing values remain distinct from real zero values.</p></div>
+    <div class="button-row"><a class="btn-secondary" href="/api/exports/research-dataset.csv">Download CSV</a><a class="btn-primary" href="/api/exports/research-dataset.xlsx">Download XLSX</a></div>
+</div>
+
+@if (message is not null) { <div class="alert @(messageIsError ? "alert-error" : "alert-success")">@message</div> }
+
+@if (isLoading)
+{
+    <div class="loading">Loading participant metrics…</div>
+}
+else if (participants.Count == 0)
+{
+    <div class="card empty-state">Create a participant before opening the research summary.</div>
+}
+else
+{
+    <section class="card summary-selector">
+        <div><strong>Select participant</strong><small>All values use the anonymous research identifier.</small></div>
+        <div class="field"><label for="summary-participant">Participant</label><select id="summary-participant" class="control" @bind="selectedParticipantId" @bind:after="LoadSummaryAsync">@foreach (var participant in participants) { <option value="@participant.Id">@participant.ParticipantCode · @participant.Course · @(participant.ResearchGroup ?? "No group")</option> }</select></div>
+    </section>
+
+    @if (summary is not null)
+    {
+        <div class="metrics-grid summary-metrics">
+            <div class="card metric-card"><span class="metric-label">Reviewed prompts</span><strong class="metric-value">@summary.ReviewedPromptCount</strong><span class="metric-detail">Valid and researcher reviewed</span></div>
+            <div class="card metric-card"><span class="metric-label">Assignments</span><strong class="metric-value">@summary.Assignments.Count</strong><span class="metric-detail">Coding tasks linked</span></div>
+            <div class="card metric-card"><span class="metric-label">Assessed tasks</span><strong class="metric-value">@summary.Assignments.Count(x => x.HasAssessment)</strong><span class="metric-detail">@summary.Assignments.Count(x => !x.HasAssessment) missing assessments</span></div>
+            <div class="card metric-card"><span class="metric-label">Research outcomes</span><strong class="metric-value">@summary.Outcomes.Count</strong><span class="metric-detail">Optional learning measures</span></div>
+        </div>
+
+        <div class="summary-grid">
+            <div class="stack">
+                <section class="card">
+                    <div class="card-header"><div><h2>AI usage profile</h2><p>Reviewed valid interactions across all assignments</p></div><span class="badge badge-blue">@summary.ReviewedPromptCount total</span></div>
+                    @if (summary.Categories.Count == 0)
+                    {
+                        <div class="empty-state">No reviewed valid interactions are available.</div>
+                    }
+                    else
+                    {
+                        <div class="category-profile">
+                            @foreach (var metric in summary.Categories.OrderByDescending(x => x.Count))
+                            {
+                                <div class="category-row">
+                                    <div><strong>@FormatEnum(metric.Category)</strong><span>@metric.Count interactions</span></div>
+                                    <div class="category-track"><i style="width:@metric.Percentage%"></i></div>
+                                    <b>@metric.Percentage.ToString("0.##")%</b>
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+
+                <section class="card">
+                    <div class="card-header"><div><h2>Coding task results</h2><p>A blank score means missing assessment; zero remains 0.0</p></div></div>
+                    @if (summary.Assignments.Count == 0)
+                    {
+                        <div class="empty-state">No coding tasks are assigned.</div>
+                    }
+                    else
+                    {
+                        <div class="table-wrap"><table class="data-table"><thead><tr><th>Task</th><th>Reviewed prompts</th><th>Submission</th><th>Assessment</th><th>Coding score</th></tr></thead><tbody>
+                        @foreach (var assignment in summary.Assignments)
+                        {
+                            <tr><td><span class="code">@assignment.TaskCode</span><br /><small>@assignment.TaskTitle</small></td><td>@assignment.ReviewedPromptCount</td><td><span class="badge @(assignment.HasSubmission ? "badge-green" : "badge-gray")">@(assignment.HasSubmission ? "Received" : "Missing")</span></td><td><span class="badge @(assignment.HasAssessment ? "badge-green" : "badge-amber")">@(assignment.HasAssessment ? "Assessed" : "Missing")</span></td><td>@if (assignment.CodingScore is null) { <span class="missing-value">Missing</span> } else { <strong>@assignment.CodingScore.Value.ToString("0.0") / 10</strong> }</td></tr>
+                        }
+                        </tbody></table></div>
+                    }
+                </section>
+            </div>
+
+            <aside class="stack summary-side">
+                <section class="card">
+                    <div class="card-header"><div><h2>Research outcomes</h2><p>Optional pre/post-test or scale values</p></div></div>
+                    @if (summary.Outcomes.Count == 0)
+                    {
+                        <div class="empty-state compact">No outcomes recorded.</div>
+                    }
+                    else
+                    {
+                        <div class="status-list">@foreach (var outcome in summary.Outcomes) { <div><span>@outcome.MetricName</span><strong>@outcome.Value.ToString("0.###")@(outcome.ScaleMaximum is null ? "" : $" / {outcome.ScaleMaximum:0.###}")</strong></div> }</div>
+                    }
+                </section>
+
+                <section class="card">
+                    <div class="card-header"><div><h2>Add or update outcome</h2><p>The same metric name updates its existing value</p></div></div>
+                    <div class="card-body form-grid">
+                        <div class="field full"><label for="metric-name">Metric name</label><input id="metric-name" class="control" list="metric-options" maxlength="60" placeholder="e.g. Pre-test" @bind="metricName" @bind:event="oninput" /><datalist id="metric-options"><option value="Pre-test"></option><option value="Post-test"></option><option value="Self-efficacy"></option><option value="Over-reliance"></option></datalist></div>
+                        <div class="field"><label for="metric-value">Value</label><input id="metric-value" class="control" type="number" step="0.001" @bind="metricValue" /></div>
+                        <div class="field"><label for="metric-scale">Scale maximum</label><input id="metric-scale" class="control" type="number" min="0.001" step="0.001" placeholder="Optional" @bind="metricScaleMaximum" /></div>
+                        <div class="full button-row"><button class="btn-primary" disabled="@isSaving" @onclick="SaveOutcomeAsync">Save outcome</button></div>
+                    </div>
+                </section>
+
+                <section class="card export-note">
+                    <div class="card-body"><h2>Export rule</h2><p>CSV and XLSX contain one row per participant–task assignment. Blank cells represent missing values; numeric zero is exported as <code>0</code>. The XLSX file includes a data dictionary for SPSS preparation.</p></div>
+                </section>
+            </aside>
+        </div>
+    }
+}
+
+@code {
+    private IReadOnlyList<Participant> participants = [];
+    private ParticipantResearchSummary? summary;
+    private Guid selectedParticipantId;
+    private string metricName = string.Empty;
+    private decimal metricValue;
+    private decimal? metricScaleMaximum;
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? message;
+    private bool messageIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            participants = await CatalogService.GetParticipantsAsync();
+            selectedParticipantId = participants.FirstOrDefault()?.Id ?? Guid.Empty;
+            await LoadSummaryAsync();
+        }
+        catch (Exception exception) { SetMessage($"Could not load participant metrics: {exception.Message}", true); }
+        finally { isLoading = false; }
+    }
+
+    private async Task LoadSummaryAsync()
+    {
+        if (selectedParticipantId == Guid.Empty) { summary = null; return; }
+        summary = await MetricsService.GetParticipantSummaryAsync(selectedParticipantId);
+    }
+
+    private async Task SaveOutcomeAsync()
+    {
+        if (selectedParticipantId == Guid.Empty || isSaving) return;
+        isSaving = true;
+        try
+        {
+            await CatalogService.UpsertOutcomeAsync(selectedParticipantId, metricName, metricValue, metricScaleMaximum);
+            await LoadSummaryAsync();
+            SetMessage($"Outcome '{metricName.Trim()}' was saved.");
+            metricName = string.Empty; metricValue = 0; metricScaleMaximum = null;
+        }
+        catch (Exception exception) when (exception is ResearchValidationException or ResearchNotFoundException) { SetMessage(exception.Message, true); }
+        catch (Exception exception) { SetMessage($"Could not save the outcome: {exception.Message}", true); }
+        finally { isSaving = false; }
+    }
+
+    private void SetMessage(string value, bool isError = false) { message = value; messageIsError = isError; }
+    private static string FormatEnum(Enum value) => System.Text.RegularExpressions.Regex.Replace(value.ToString(), "(?<!^)([A-Z])", " $1");
+}

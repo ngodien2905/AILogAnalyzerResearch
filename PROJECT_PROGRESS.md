@@ -39,10 +39,10 @@
 
 ## Milestone 5 Metrics and Export
 
-- [ ] Participant research summary
-- [ ] Missing value and zero value distinction
-- [ ] Anonymized CSV export
-- [ ] XLSX export for SPSS preparation
+- [x] Participant research summary
+- [x] Missing value and zero value distinction
+- [x] Anonymized CSV export
+- [x] XLSX export for SPSS preparation
 
 ## Milestone 6 Supabase and Deployment
 

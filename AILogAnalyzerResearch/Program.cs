@@ -43,6 +43,7 @@ builder.Services.AddScoped<ResearchCatalogService>();
 builder.Services.AddScoped<ResearchInteractionService>();
 builder.Services.AddScoped<ResearchSubmissionService>();
 builder.Services.AddScoped<ResearchMetricsService>();
+builder.Services.AddScoped<ResearchExportService>();
 builder.Services.AddScoped<DemoDataSeeder>();
 builder.Services.AddSingleton<IFileStorageService>(services =>
 {
@@ -110,6 +111,22 @@ app.MapGet("/api/submissions/{id:guid}/download", async Task<IResult> (
     {
         return Results.NotFound();
     }
+});
+
+app.MapGet("/api/exports/research-dataset.csv", async Task<IResult> (
+    ResearchExportService exportService,
+    CancellationToken cancellationToken) =>
+{
+    var export = await exportService.CreateCsvAsync(cancellationToken);
+    return Results.File(export.Content, export.ContentType, export.FileName);
+});
+
+app.MapGet("/api/exports/research-dataset.xlsx", async Task<IResult> (
+    ResearchExportService exportService,
+    CancellationToken cancellationToken) =>
+{
+    var export = await exportService.CreateXlsxAsync(cancellationToken);
+    return Results.File(export.Content, export.ContentType, export.FileName);
 });
 
 app.MapRazorComponents<App>()
